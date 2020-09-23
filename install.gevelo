@@ -1,0 +1,201 @@
+#!/usr/bin/env bash
+#
+#  Copyright 2019-2020 zoyo.red and bUN93
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program; if not, write to the Free Software
+#  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
+#  MA 02110-1301, USA.
+#
+shopt -s extglob
+opt=$1
+
+# global function
+exiterr() {
+  echo -e "Error: $1" >&2
+  exit 1
+}
+infopr() {
+  echo -e "INFO: $1"
+}
+warnpr() {
+  echo -e "WARN: $1"
+}
+
+
+
+print_help() {
+  echo "Thanks for using gvelo installer.\n\nUsage: \"$0\" to install gvelo including dependencies or \"$0 uninstall\" to remove all installed packages"
+}
+
+# variables
+YUM_PACKAGE_NAME="ninja-build meson"
+DEB_PACKAGE_NAME="python3 python3-pip python3-setuptools python3-wheel ninja-build ronn"
+
+# functions
+install_ipcalc() {
+  work_dir=$(mktemp -d)
+  cd ${work_dir}
+  wget https://gitlab.com/ipcalc/ipcalc/-/archive/master/ipcalc-master.tar.gz
+  tar -zxf ipcalc-master.tar.gz --directory /usr/src/
+  cd /usr/src/ipcalc-master
+  meson configure build
+  meson setup build -Duse_maxminddb=disabled -Duse_geoip=disabled
+  ninja -C build
+  [[ -f "/usr/bin/ipcalc" ]] && mv /usr/bin/ipcalc /usr/bin/ipcalc.backup
+  cp ./build/ipcalc /usr/bin/ipcalc
+  rm -rf ${work_dir}
+}
+
+install_progbar() {
+  work_dir=$(mktemp -d)
+  cd ${work_dir}
+  curl -OL https://raw.githubusercontent.com/a1-digital-international/NaaS-Releases/master/progress_bar
+  curl -OL https://raw.githubusercontent.com/a1-digital-international/NaaS-Releases/master/progress_bar.md5
+  (md5sum --quiet -c progress_bar.md5) && cp progress_bar /usr/bin/. || exiterr "progress_bar md5 checksum failed."
+  chmod a+x /usr/bin/progress_bar
+  rm -rf ${work_dir}
+}
+
+install_pts() {
+  work_dir=$(mktemp -d)
+  cd ${work_dir}
+  curl -OL https://raw.githubusercontent.com/a1-digital-international/NaaS-Releases/master/pts.tar.gz
+  curl -OL https://raw.githubusercontent.com/a1-digital-international/NaaS-Releases/master/pts.md5
+  (md5sum --quiet -c pts.md5) && tar zxf pts.tar.gz --directory /usr/src || exiterr "pts md5 checksum failed"
+  cd /usr/src/pts
+  make all
+  make install
+  rm -rf ${work_dir}
+}
+
+install_gvelo() {
+  work_dir=$(mktemp -d)
+  cd ${work_dir}
+  curl -OL https://raw.githubusercontent.com/a1-digital-international/NaaS-Releases/master/gvelo
+  curl -OL https://raw.githubusercontent.com/a1-digital-international/NaaS-Releases/master/gvelo.md5
+  (md5sum --quiet -c gvelo.md5) && cp gvelo /usr/bin/. || exiterr "gvelo md5 checksum failed."
+  chmod a+x /usr/bin/gvelo
+  rm -rf ${work_dir}
+}
+
+install_rhall() {
+  infopr "installing package progbar"
+  install_progbar
+  infopr "installing package pts"
+  install_pts
+  infopr "installing package gvelo"
+  install_gvelo
+}
+
+remove_rhall() {
+  infopr "remove package progress_bar"
+  rm -rf /usr/bin/progress_bar
+  infopr "remove packages pts"
+  cd /usr/src/pts
+  make uninstall
+  cd
+  rm -rf /usr/src/pts
+  infopr "remove package gvelo"
+  rm -rf /usr/bin/gvelo
+}
+
+install_all() {
+  infopr "installing package ipcalc"
+  install_ipcalc
+  infopr "installing package progbar"
+  install_progbar
+  infopr "installing package pts"
+  install_pts
+  infopr "installing package gvelo"
+  install_gvelo
+}
+
+remove_all() {
+  infopr "remove package ipcalc"
+  cd /usr/src/ipcalc-master
+  rm -rf $(ninja -t targets)
+  cd
+  rm -rf /usr/src/ipcalc-master
+  rm -rf /usr/bin/ipcalc
+  [[ -f "/usr/bin/ipcalc.backup" ]] && mv /usr/bin/ipcalc.backup /usr/bin/ipcalc
+  infopr "remove package progress_bar"
+  rm -rf /usr/bin/progress_bar
+  infopr "remove packages pts"
+  cd /usr/src/pts
+  make uninstall
+  cd
+  rm -rf /usr/src/pts
+  infopr "remove package gvelo"
+  rm -rf /usr/bin/gvelo
+}
+
+install_yum_deps() {
+  infopr "installing packages $YUM_PACKAGE_NAME"
+  yum install -y $YUM_PACKAGE_NAME
+  install_rhall
+}
+
+remove_yum_deps() {
+  remove_rhall
+  infopr "remove packages $YUM_PACKAGE_NAME"
+  yum remove -y $YUM_PACKAGE_NAME
+}
+
+install_apt_deps() {
+  infopr "installing packages $DEB_PACKAGE_NAME"
+  apt-get update
+  apt-get install -y $DEB_PACKAGE_NAME
+  infopr "installing package meson"
+  pip3 install meson
+  install_all
+}
+
+remove_apt_deps() {
+  remove_all
+  infopr "remove package meson"
+  pip3 uninstall meson
+  infopr "remove packages $DEB_PACKAGE_NAME"
+  apt-get remove --autoremove -y $DEB_PACKAGE_NAME
+}
+
+detect_run_install() {
+  [[ $(cat /etc/*release) =~ "CentOS" ]] && install_yum_deps ||
+    ([[ $(cat /etc/*release) =~ "Red" ]] && install_yum_deps ||
+      ([[ $(cat /etc/*release) =~ "Fedora" ]] && install_yum_deps ||
+        ([[ $(cat /etc/*release) =~ "Ubuntu" ]] && install_apt_deps ||
+          ([[ $(cat /etc/*release) =~ "Debian" ]] && install_apt_deps ||
+            ([[ $(cat /etc/*release) =~ "Mint" ]] && install_apt_deps ||
+              ([[ $(cat /etc/*release) =~ "Knoppix" ]] && install_apt_deps ||
+                (exiterr "OS NOT DETECTED, couldn't install packages")))))))
+}
+
+detect_run_remove() {
+  [[ $(cat /etc/*release) =~ "CentOS" ]] && remove_yum_deps ||
+    ([[ $(cat /etc/*release) =~ "Red" ]] && remove_yum_deps ||
+      ([[ $(cat /etc/*release) =~ "Fedora" ]] && remove_yum_deps ||
+        ([[ $(cat /etc/*release) =~ "Ubuntu" ]] && remove_apt_deps ||
+          ([[ $(cat /etc/*release) =~ "Debian" ]] && remove_apt_deps ||
+            ([[ $(cat /etc/*release) =~ "Mint" ]] && remove_apt_deps ||
+              ([[ $(cat /etc/*release) =~ "Knoppix" ]] && remove_apt_deps ||
+                (exiterr "OS NOT DETECTED, couldn't uninstall packages")))))))
+}
+
+detect_run() {
+  [[ -z ${opt} ]] && detect_run_install ||
+    ([[ ${opt} =~ "help" ]] && print_help ||
+      ([[ ${opt} == "uninstall" ]] && detect_run_remove || exiterr "use $0 help to print options"))
+}
+
+# check id
+[[  $(id -u) -ne 0 ]] && exiterr "unpriveledged rights detected. Run sudo $0" || detect_run
