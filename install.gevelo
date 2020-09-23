@@ -18,6 +18,8 @@
 #  MA 02110-1301, USA.
 #
 shopt -s extglob
+opt=$1
+
 # global function
 exiterr() {
   echo -e "Error: $1" >&2
@@ -48,7 +50,7 @@ install_ipcalc() {
   tar -zxf ipcalc-master.tar.gz --directory /usr/src/
   cd /usr/src/ipcalc-master
   meson configure build
-  meson setup build `-Duse_maxminddb=disabled -Duse_geoip=disabled`
+  meson setup build -Duse_maxminddb=disabled -Duse_geoip=disabled
   ninja -C build
   [[ -f "/usr/bin/ipcalc" ]] && mv /usr/bin/ipcalc /usr/bin/ipcalc.backup
   cp ./build/ipcalc /usr/bin/ipcalc
@@ -58,8 +60,8 @@ install_ipcalc() {
 install_progbar() {
   work_dir=$(mktemp -d)
   cd ${work_dir}
-  wget https://github.com/a1-digital-international/NaaS-Releases/blob/master/progress_bar
-  wget https://github.com/a1-digital-international/NaaS-Releases/blob/master/progress_bar.md5
+  curl -OL https://raw.githubusercontent.com/a1-digital-international/NaaS-Releases/master/progress_bar
+  curl -OL https://raw.githubusercontent.com/a1-digital-international/NaaS-Releases/master/progress_bar.md5
   (md5sum --quiet -c progress_bar.md5) && cp progress_bar /usr/bin/. || exiterr "progress_bar md5 checksum failed."
   chmod a+x /usr/bin/progress_bar
   rm -rf ${work_dir}
@@ -68,8 +70,8 @@ install_progbar() {
 install_pts() {
   work_dir=$(mktemp -d)
   cd ${work_dir}
-  wget https://github.com/a1-digital-international/NaaS-Releases/blob/master/pts.tar.gz
-  wget https://github.com/a1-digital-international/NaaS-Releases/blob/master/pts.md5
+  curl -OL https://raw.githubusercontent.com/a1-digital-international/NaaS-Releases/master/pts.tar.gz
+  curl -OL https://raw.githubusercontent.com/a1-digital-international/NaaS-Releases/master/pts.md5
   (md5sum --quiet -c pts.md5) && tar zxf pts.tar.gz --directory /usr/src || exiterr "pts md5 checksum failed"
   cd /usr/src/pts
   make all
@@ -80,8 +82,8 @@ install_pts() {
 install_gvelo() {
   work_dir=$(mktemp -d)
   cd ${work_dir}
-  wget https://github.com/a1-digital-international/NaaS-Releases/blob/master/gvelo
-  wget https://github.com/a1-digital-international/NaaS-Releases/blob/master/gvelo.md5
+  curl -OL https://raw.githubusercontent.com/a1-digital-international/NaaS-Releases/master/gvelo
+  curl -OL https://raw.githubusercontent.com/a1-digital-international/NaaS-Releases/master/gvelo.md5
   (md5sum --quiet -c gvelo.md5) && cp gvelo /usr/bin/. || exiterr "gvelo md5 checksum failed."
   chmod a+x /usr/bin/gvelo
   rm -rf ${work_dir}
@@ -190,9 +192,9 @@ detect_run_remove() {
 }
 
 detect_run() {
-  [[ -z $1 ]] && detect_run_install ||
-    ([[ $1 =~ "help" ]] && print_help ||
-      ([[ $1 == "uninstall" ]] && detect_run_remove || exiterr "use $0 help to print options"))
+  [[ -z ${opt} ]] && detect_run_install ||
+    ([[ ${opt} =~ "help" ]] && print_help ||
+      ([[ ${opt} == "uninstall" ]] && detect_run_remove || exiterr "use $0 help to print options"))
 }
 
 # check id
