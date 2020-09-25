@@ -39,6 +39,7 @@ infopr() {
 warnpr() {
   echo -e "WARN: $1"
 }
+
 # IP and network test and convert
 check_net() {
   ipvar=$1; $(ipcalc ${ipvar} -c -s) && ([[ $(ipcalc ${ipvar} --no-decorate -p) -lt 30 ]])
@@ -52,31 +53,49 @@ convert_net() {
 convert_ip() {
   ipvar=$1; echo "$(ipcalc ${ipvar} --no-decorate -a)"
 }
+
 # check if IP in network range and not reservated by google vpc
 check_lan_net_ip(){
-  [[ $(ipcalc ${gc_private_range} --no-decorate -n) = $(ipcalc ${vce_private_ip}/$(ipcalc ${gc_private_range} --no-decorate -p) --no-decorate -n) ]] && ([[ ${vce_private_ip//./} -gt $(ipcalc ${gc_private_range} --no-decorate -n |awk -F. '{sum=$4+2; print $1 $2 $3 sum}') ]] || exiterr "first and second IP adresses are used by Google internally and cant be used as IP address for VeloCloud virtual Edge.") || exiterr "VeloCloud IP ${vce_private_ip} is out of scope from vpc network ${gc_private_range}"
+  [[ $(ipcalc ${gc_private_range} --no-decorate -n) = $(ipcalc ${vce_private_ip}/$(ipcalc ${gc_private_range} --no-decorate -p) --no-decorate -n) ]] && ([[ ${vce_private_ip//./} -gt $(ipcalc ${gc_private_range} --no-decorate -n | awk -F. '{sum=$4+2; print $1 $2 $3 sum}') ]] || exiterr "first and second IP adresses are used by Google internally and cant be used as IP address for VeloCloud virtual Edge.") || exiterr "VeloCloud IP ${vce_private_ip} is out of scope from vpc network ${gc_private_range}"
+  [[ ${vce_private_ip} < $(ipcalc ${gc_private_range} --maxaddr --no-decorate) ]] || exiterr "last IP adresses of network ${gc_private_range} are used by Google internally and cant be used as IP address for VeloCloud virtual Edge."
 }
+
 # get google cloud service account from gcloud with default gcloud configuration settings
 get_gc_service_ac() {
-  gcloud beta iam service-accounts list --project ${gc_project} --filter "Compute Engine" |awk '{print $6}' |sed 's/\@.*//g'
+  gcloud beta iam service-accounts list --project ${gc_project} --filter "Compute Engine" |awk '{print $6}' |sed 's/\@.*//g' | sed '/./,$!d'
 }
+
+# list information summary from gcloud with default gcloud configuration settings
+gc_cloud_list() {
+  infopr "Sorry! This function is not fully supported on this version of gvelo."
+  # get projects list
+  gcloud projects list
+}
+
+
+
+# check if set new project or exist project
+check_options() {
+  [[ ! -z ${gc_create_prj} ]] && ((required_options_gcp_new) && gcloud_ngcp || return 1) || ((required_options_gcp_exist) && gcloud_gcp || return 1)
+}
+
+# check if needed additional software installed
+check_env() {
+  infopr "Start checks if currently installed gvelo dependencies are installed."
+  ptscreate=$(which pts_create)
+  [[ ! -x ${ptscreate} ]] && exiterr "pts_create could'nt be found. Please install pts_create first. <https://github.com/a1-digital-international/Network-as-a-Service/tree/master/pts> "
+  ptswriter=$(which pts_writer)
+  [[ ! -x ${ptswriter} ]] && exiterr "pts_writer could'nt be found. Please install pts_writer first. <https://github.com/a1-digital-international/Network-as-a-Service/tree/master/pts> "
+  gcloudcli=$(which gcloud)
+  [[ ! -x ${gcloudcli} ]] && exiterr "gcloud SDK could'nt be found. Please install the Google Cloud SDK first." || ((check_gcloud_config) && infopr "Check of installed dependencies successfully done." || exit 1)
+}
+
 # run check if gcloud cli configured
 check_gcloud_config() {
   echo "INFO: Run diagnostics check of gcloud SDK."
-  gcloud info --run-diagnostics && infopr "All seams be okay." || exiterr "Please run \"gcloud info\" on command line and fix all errors first."
+  [[ $(gcloud info |grep Account |awk '{print $2}') == "[None]" ]] && exiterr "Please run \"gcloud auth login\" on command line first." || (gcloud info --run-diagnostics && infopr "All seams be okay."; return 0 || exiterr "Please run \"gcloud info\" on command line and fix all errors first."; return 1)
 }
-# load deployment variables from file and reconfigure exist strings
-load_env_file() {
-  source ${load_env_file}
-  check_options
-}
-# list information summary from gcloud with default gcloud configuration settings
-gc_cloud_list() {
-  echo bar
-  # get projects list
-  #gcloud projects list
 
-}
 # test if required options set
 required_options_gcp_exist() {
   [[ -z ${gc_region} ]] && exiterr "Missing required option. Use $0 -h or --help to find correct options"
@@ -89,9 +108,10 @@ required_options_gcp_exist() {
   [[ -z ${vco_server} ]] && exiterr "Missing required option. Use $0 -h or --help to find correct options"
   [[ -z ${vce_login} ]] && exiterr "Missing required option. Use $0 -h or --help to find correct options"
   [[ -z ${registration_key} ]] && exiterr "Missing required option. Use $0 -h or --help to find correct options"
-  check_lan_net_ip
-  echo 0 >/dev/null 2>&1
+  (check_lan_net_ip) && return 0
 }
+
+# test if required options set for new gcloud project
 required_options_gcp_new() {
   [[ -z ${gc_region} ]] && exiterr "Missing required option. Use $0 -h or --help to find correct options"
   [[ -z ${gc_zone} ]] && exiterr "Missing required option. Use $0 -h or --help to find correct options"
@@ -103,36 +123,22 @@ required_options_gcp_new() {
   [[ -z ${vco_server} ]] && exiterr "Missing required option. Use $0 -h or --help to find correct options"
   [[ -z ${vce_login} ]] && exiterr "Missing required option. Use $0 -h or --help to find correct options"
   [[ -z ${registration_key} ]] && exiterr "Missing required option. Use $0 -h or --help to find correct options"
-  check_lan_net_ip
-  echo 0 >/dev/null 2>&1
+  (check_lan_net_ip) && return 0
 }
-# check if set new project or exist project
-check_options() {
-  [[ ! -z ${gc_create_prj} ]] && ((required_options_gcp_new) && gcloud_ngcp) || ((required_options_gcp_exist) && gcloud_gcp)
-}
+
 # run new project
 gcloud_ngcp() {
-  echo "DEBUG: start with new project"
-  check_env
-  echo "DEBUG: create_new_project"
-  echo "DEBUG: create_gvelo"
+  infopr "start with new project"
+  (check_env) && ((create_new_project) && create_gvelo || exit 1) || exit1
 }
+
 # run exist project
 gcloud_gcp() {
-  echo "DEBUG: start with exist project"
-  check_env
-  echo "DEBUG: create_gvelo"
+  infopr "start with exist project"
+  (check_env) && create_gvelo || exit 1
 }
-# check if needed additional software installed
-check_env() {
-  infopr "Start checks if currently installed gvelo dependencies are installed."
-  ptscreate=$(which pts_create)
-  [[ ! -x ${ptscreate} ]] && exiterr "pts_create could'nt be found. Please install pts_create first. <https://github.com/a1-digital-international/Network-as-a-Service/tree/master/pts> "
-  ptswriter=$(which pts_writer)
-  [[ ! -x ${ptswriter} ]] && exiterr "pts_writer could'nt be found. Please install pts_writer first. <https://github.com/a1-digital-international/Network-as-a-Service/tree/master/pts> "
-  gcloudcli=$(which gcloud)
-  [[ ! -x ${gcloudcli} ]] && exiterr "gcloud SDK could'nt be found. Please install the Google Cloud SDK first." || infopr "Check of installed dependencies successfully done."
-}
+
+# create a new gcloud projekt and set as default
 create_new_project() {
   gcloud projects create ${create_new_project} --name="${gc_project_name}" --labels=type=smart-vpn && gc_project=${create_new_project} || exiterr "Failed to create new project."
   # set a default project
@@ -140,6 +146,8 @@ create_new_project() {
   ### valued-vault-272112
   gcloud beta artifacts packages list --project=${gc_project}
 }
+
+# create vpc's and instance, install VeloCloud and register at VCO
 create_gvelo () {
   source /usr/bin/progress_bar
   echo "INFO: This script runs with simple static code, to deploy a dual homed VeloCloud Edge in Google Cloud Environment"
@@ -152,19 +160,19 @@ create_gvelo () {
   gcloud compute networks create velo-vpc-public --project=${gc_project} --description=velocloud\ WAN --subnet-mode=custom --bgp-routing-mode=regional >/dev/null 2>&1
   draw_progress_bar 10
 
-  # create subnets on vpc
-  echo "INFO: Create predifined private and public networks."
+  ## create subnets on vpc
+  echo "INFO: Create predefined private and public networks."
   gcloud compute networks subnets create public-vpc --project=${gc_project} --range=${gc_public_range} --network=velo-vpc-public --region=${gc_region} >/dev/null 2>&1
   gcloud compute networks subnets create private-vpc --project=${gc_project} --range=${gc_private_range} --network=velo-vpc-private --region=${gc_region} >/dev/null 2>&1
   draw_progress_bar 20
 
-  # create firewall rule for WAN vpc
-  echo "INFO: Create predifined firewall rule and make the VeloCloud at protocoll VCMP public reachable."
+  ## create firewall rule for WAN vpc
+  echo "INFO: Create predefined firewall rule and make the VeloCloud at protocoll VCMP public reachable."
   gcloud compute --project=${gc_project} firewall-rules create ingress-public-vpc-vcmp --direction=INGRESS --priority=100 --network=velo-vpc-public --action=ALLOW --rules=udp:2426 --source-ranges=0.0.0.0/0 >/dev/null 2>&1
   draw_progress_bar 30
 
-  # create new default route for private network with virtual edge as next hop
-  # If the do not delete the default gw of gcloud flag set, the will this route work as backup route. Access from Internet to pvc is denied by default. Else use following to get string to delete the default route.
+  ## create new default route for private network with virtual edge as next hop
+  ## If the do not delete the default gw of gcloud flag set, the will this route work as backup route. Access from Internet to pvc is denied by default. Else use following to get string to delete the default route.
   echo "INFO: Remove the Google default route on private network."
   echo "      Set a new default route for all instances on private network via VeloCloud."
   gcloud beta compute routes create priv-default-rt --project=${gc_project} --description=SD-WAN\ GW\ is\ next\ hop\ for\ default\ route --network=velo-vpc-private --priority=1 --destination-range=0.0.0.0/0 --next-hop-address=${vce_private_ip} >/dev/null 2>&1
@@ -172,17 +180,18 @@ create_gvelo () {
   gcloud compute routes delete ${df_route_delete} --quiet >/dev/null 2>&1
   draw_progress_bar 35
 
-  # create internal static address for velo-vpc-private
+  ## create internal static address for velo-vpc-private
   gcloud compute addresses create velo-static-private --addresses ${vce_private_ip} --region=${gc_region} --subnet=private-vpc  >/dev/null 2>&1
   draw_progress_bar 40
 
-  # create instanze
+  ## create instanze
   echo "INFO: Create new instance from VeloCloud image."
+  [[ -z ${gc_service_ac} ]] && gc_service_ac=$(get_gc_service_ac)
   gcloud beta compute --project=${gc_project} instances create ${gc_instance_name} --zone=${gc_zone} --machine-type=n1-standard-2 --network-interface subnet=public-vpc --network-interface private-network-ip=velo-static-private,subnet=private-vpc,no-address --can-ip-forward --maintenance-policy=MIGRATE --service-account=${gc_service_ac}@developer.gserviceaccount.com --scopes=https://www.googleapis.com/auth/devstorage.read_only,https://www.googleapis.com/auth/logging.write,https://www.googleapis.com/auth/monitoring.write,https://www.googleapis.com/auth/servicecontrol,https://www.googleapis.com/auth/service.management.readonly,https://www.googleapis.com/auth/trace.append --image=velo-321 --image-project=valued-vault-272112 --boot-disk-size=10GB --boot-disk-type=pd-standard --boot-disk-device-name=vvce1-gcp-euwest2 --reservation-affinity=any --tags vvce1-gcp-euwest2  >/dev/null 2>&1
   gcloud compute instances add-metadata ${gc_instance_name} --metadata serial-port-enable=TRUE --zone=${gc_zone} >/dev/null 2>&1
   draw_progress_bar 50
 
-  # create new pts
+  ## create new pts
   gc_instance_status=''
   i="0"
   while :; do
@@ -198,7 +207,7 @@ create_gvelo () {
     else
       if [[ ${gc_instance_status} = "RUNNING" ]]; then
         echo "INFO: ${gc_instance_name} is in state ${gc_instance_status}. Start gcloud compute connect on a new PTS."
-        pts_create bash -c "gcloud compute connect-to-serial-port root@${gc_instance_name} --zone=${gc_zone} --quiet" >/dev/null 2>&1 &
+        pts_create bash -c "gcloud compute connect-to-serial-port root@${gc_instance_name} --zone=${gc_zone} --force-key-file-overwrite --quiet" >/dev/null 2>&1 &
         child_pid=$!
         draw_progress_bar 55
         break
@@ -208,7 +217,7 @@ create_gvelo () {
     fi
   done
 
-  # get PTS
+  ## get PTS
   i="0"
   while :; do
     if [[ -z "${pts_id}" ]] && [[ ${i} -lt 10 ]] ; then
@@ -228,9 +237,9 @@ create_gvelo () {
     fi
   done
 
-  # login root velocloud and paste code as following
-  # VeloCloud image need's respawn paramter in /etc/inittab
-  # sleep 30 to wait thats vce online
+  ## login root velocloud and paste code as following
+  ## VeloCloud image need's respawn paramter in /etc/inittab
+  ## sleep 30 to wait thats vce online
   echo "INFO: Waiting of console access. That could take a while."
   sleep 30
   pts_writer -n /dev/pts/${pts_id} ""
@@ -269,6 +278,7 @@ create_gvelo () {
   echo "INFO: Script runs sucessfully done."
   destroy_scroll_area
 }
+
 # parameter and helps
 display_help() {
     echo "Usage: $0 -r <g-cloud region> -z <gcloud zone> -p <gcloud project> -i <instance name> [-s <gcloud service account>] -l <lan site network/CID> "
@@ -330,13 +340,7 @@ display_help() {
     exit 1
 }
 
-
-######################
-#
-######################
-
-
-# transform long options to short
+# transform long options to short options
 for loptions in "$@"
 do
   shift
@@ -366,7 +370,7 @@ while getopts :r:z:p:P:i:l:w:e:o:c:k:f:C:s:hL options
 do
   case $options in
     h) display_help; exit 0 ;;
-    L) gcloud_list; exit 0 ;;
+    L) gc_cloud_list; exit 0 ;;
     r) [[ ${OPTARG} =~ ^\=.*$ ]] && OPTARG=${OPTARG:1}; gc_region=${OPTARG} ;;
     z) [[ ${OPTARG} =~ ^\=.*$ ]] && OPTARG=${OPTARG:1}; gc_zone=${OPTARG} ;;
     p) [[ ${OPTARG} =~ ^\=.*$ ]] && OPTARG=${OPTARG:1}; gc_project=${OPTARG} ;;
@@ -388,21 +392,25 @@ done
 shift $((${OPTIND} - 1))
 
 # split user and password from vce_login
-vce_password=$(echo ${vce_login} |sed 's/^[a-Z0-9]*\@//g')
+vce_password=$(echo ${vce_login} |sed 's/^[:alnum]*\@//g')
 vce_login=$(echo ${vce_login} |sed 's/\@.*//g')
 
-# look if option -f declared
-[[ ! -z ${load_env_file} ]] && ([[ -r ${load_env_file} ]] && infopr "Reading data from ${load_env_file}"; source ${load_env_file}; check_options || exiterr "Cant access ${load_env_file}") || check_options
+sub_load_files() {
+  [[ -r ${load_env_file} ]] && infopr "Reading data from ${load_env_file}"; source ${load_env_file}; ($(check_net ${OPTARG}) && gc_private_range=$(convert_net ${gc_private_range})); ($(check_net ${OPTARG}) && gc_public_range=$(convert_net ${gc_public_range})); ($(check_ip ${OPTARG}) && vce_private_ip=$(convert_ip ${vce_private_ip})); ((check_options) || return 1) || exiterr "Cant read or use ${load_env_file}"
+}
+
+# if option -f declared, then import variables and start or start with-out import -> check_options
+[[ ! -z ${load_env_file} ]] &&  sub_load_files || check_options
 
 
 
 # test options
-echo "test options"
-echo "gc_region=${gc_region} | gc_zone=${gc_zone} | gc_project=${gc_project} | gc_project_name=${gc_project_name} | gc_instance_name=${gc_instance_name} | gc_public_range=${gc_public_range} | "
-echo "gc_private_range=${gc_private_range} | vce_private_ip=${vce_private_ip} | vce_login=${vce_login} | vce_password=${vce_password} | vco_server=${vco_server} | registration_key=${registration_key}"
-echo "gc_service_ac=${gc_service_ac}"
-echo "gc_create_prj=${gc_create_prj}"
-echo "end test options"
+#echo "test options"
+#echo "gc_region=${gc_region} | gc_zone=${gc_zone} | gc_project=${gc_project} | gc_project_name=${gc_project_name} | gc_instance_name=${gc_instance_name} | gc_public_range=${gc_public_range} | "
+#echo "gc_private_range=${gc_private_range} | vce_private_ip=${vce_private_ip} | vce_login=${vce_login} | vce_password=${vce_password} | vco_server=${vco_server} | registration_key=${registration_key}"
+#echo "gc_service_ac=${gc_service_ac}"
+#echo "gc_create_prj=${gc_create_prj}"
+#echo "end test options"
 
 
 
