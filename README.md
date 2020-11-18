@@ -6,7 +6,8 @@ Download the _install.gvelo_ script and run as root.
 
 ```
 [user@host ~ ]$ curl -OL https://raw.githubusercontent.com/a1-digital-international/NaaS-Releases/master/install.gvelo
-[user@host ~ ]$ sudo install.gvelo
+[user@host ~ ]$ chmod a+x install.gvelo
+[user@host ~ ]$ sudo ./install.gvelo
 ```
 
 ## uninstall gvelo
