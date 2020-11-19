@@ -108,6 +108,7 @@ required_options_gcp_exist() {
   [[ -z ${vco_server} ]] && exiterr "Missing required option. Use $0 -h or --help to find correct options"
   [[ -z ${vce_login} ]] && exiterr "Missing required option. Use $0 -h or --help to find correct options"
   [[ -z ${registration_key} ]] && exiterr "Missing required option. Use $0 -h or --help to find correct options"
+  gcloud config set project ${gc_project}
   (check_lan_net_ip) && return 0
 }
 
@@ -145,6 +146,7 @@ create_new_project() {
   ##gcloud beta artifacts packages list --project=my-project
   ### valued-vault-272112
   gcloud beta artifacts packages list --project=${gc_project}
+  gcloud config set project ${gc_project}
 }
 
 # create vpc's and instance, install VeloCloud and register at VCO
