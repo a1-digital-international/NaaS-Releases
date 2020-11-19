@@ -19,8 +19,6 @@
 #
 shopt -s extglob
 
-[[ $(id -u) = "0" ]] || exiterr "Please run as root."
-
 # versions
 gvelo_ver="0.1.0 x86_64"
 
@@ -41,6 +39,9 @@ infopr() {
 warnpr() {
   echo -e "WARN: $1"
 }
+
+# run as root only
+[[ $(id -u) = "0" ]] || exiterr "Please run as root."
 
 # IP and network test and convert
 check_net() {
