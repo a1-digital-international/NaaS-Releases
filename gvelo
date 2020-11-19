@@ -19,6 +19,8 @@
 #
 shopt -s extglob
 
+[[ $(id -u) = "0" ]] || exiterr "Please run as root."
+
 # versions
 gvelo_ver="0.1.0 x86_64"
 
