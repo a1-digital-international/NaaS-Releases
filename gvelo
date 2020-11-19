@@ -57,7 +57,7 @@ convert_ip() {
 # check if IP in network range and not reservated by google vpc
 check_lan_net_ip(){
   [[ $(ipcalc ${gc_private_range} --no-decorate -n) = $(ipcalc ${vce_private_ip}/$(ipcalc ${gc_private_range} --no-decorate -p) --no-decorate -n) ]] && ([[ ${vce_private_ip//./} -gt $(ipcalc ${gc_private_range} --no-decorate -n | awk -F. '{sum=$4+2; print $1 $2 $3 sum}') ]] || exiterr "first and second IP adresses are used by Google internally and cant be used as IP address for VeloCloud virtual Edge.") || exiterr "VeloCloud IP ${vce_private_ip} is out of scope from vpc network ${gc_private_range}"
-  [[ ${vce_private_ip} < $(ipcalc ${gc_private_range} --maxaddr --no-decorate) ]] || exiterr "last IP adresses of network ${gc_private_range} are used by Google internally and cant be used as IP address for VeloCloud virtual Edge."
+  [[ $(echo ${vce_private_ip} | awk -F '.' '{printf "%dn", ($1 * 2^24) + ($2 * 2^16) + ($3 * 2^8) + $4}') < $(ipcalc ${gc_private_range} --maxaddr --no-decorate | awk -F '.' '{printf "%dn", ($1 * 2^24) + ($2 * 2^16) + ($3 * 2^8) + $4}') ]] || exiterr "last IP adresses of network ${gc_private_range} are used by Google internally and cant be used as IP address for VeloCloud virtual Edge."
 }
 
 # get google cloud service account from gcloud with default gcloud configuration settings
